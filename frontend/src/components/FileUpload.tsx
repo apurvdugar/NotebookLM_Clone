@@ -38,9 +38,9 @@ export function FileUpload({ onUpload }: FileUploadProps) {
   };
 
   const processFile = async (file: File) => {
-    const validTypes = ['application/pdf', 'text/plain'];
+    const validTypes = ['application/pdf', 'text/plain', 'text/csv'];
     if (!validTypes.includes(file.type)) {
-      alert("Only PDF and TXT files are allowed.");
+      alert("Only PDF, TXT and CSV files are allowed.");
       return;
     }
 
@@ -116,7 +116,7 @@ export function FileUpload({ onUpload }: FileUploadProps) {
         type="file"
         ref={fileInputRef}
         className="hidden"
-        accept=".pdf,.txt"
+        accept=".pdf,.txt,.csv"
         onChange={handleFileChange}
       />
       

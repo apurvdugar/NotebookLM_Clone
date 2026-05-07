@@ -4,6 +4,8 @@ import cors from "cors";
 import multer from "multer";
 import fs from "fs";
 import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf";
+import { CSVLoader } from "@langchain/community/document_loaders/fs/csv";
+import { TextLoader } from "langchain/document_loaders/fs/text";
 import { OpenAIEmbeddings } from "@langchain/openai";
 import { QdrantVectorStore } from "@langchain/qdrant";
 import { OpenAI } from "openai";
@@ -46,7 +48,7 @@ const queryModel = 'openai/gpt-oss-20b:free';
 
 const collectionStatuses = new Map();
 
-async function indexing(filePath, collectionId) {
+async function indexing(filePath, originalName, collectionId) {
   try {
     // Create collection
     await qdrantClient.createCollection(collectionId, {
@@ -68,8 +70,28 @@ async function indexing(filePath, collectionId) {
     );
 
     // Load & Split
-    const loader = new PDFLoader(filePath);
-    const docs = await loader.load();
+    let docs;
+    const lowerName = originalName.toLowerCase();
+    if (lowerName.endsWith(".csv")) {
+      console.log(`[${collectionId}] Loading CSV file: ${originalName}`);
+      const loader = new CSVLoader(filePath);
+      docs = await loader.load();
+    }
+    else if (lowerName.endsWith(".txt")) {
+      console.log(`[${collectionId}] Loading TXT file: ${originalName}`);
+      const loader = new TextLoader(filePath);
+      docs = await loader.load();
+    }
+    else if (lowerName.endsWith(".pdf")) {
+      console.log(`[${collectionId}] Loading PDF file: ${originalName}`);
+      const loader = new PDFLoader(filePath);
+      docs = await loader.load();
+    }
+    else {
+      throw new Error(`Unsupported file type: ${originalName}`);
+    }
+
+    console.log(`[${collectionId}] Loaded ${docs.length} documents`);
 
     const textSplitter = new RecursiveCharacterTextSplitter({
       chunkSize: 500,
@@ -103,16 +125,20 @@ async function retrieval(query, collectionId) {
   );
 
   const searchedChunks = await vectorStore.similaritySearch(query, 3);
+  console.log(`[${collectionId}] Found ${searchedChunks.length} relevant chunks`);
 
   const context = searchedChunks
-    .map((doc, i) => `Chunk ${i + 1}:\n${doc.pageContent}`).join("\n\n");
+    .map((doc, i) => {
+      console.log(`[${collectionId}] Chunk ${i+1} preview: ${doc.pageContent.substring(0, 100)}...`);
+      return `Chunk ${i + 1}:\n${doc.pageContent}`;
+    }).join("\n\n");
 
   const system_prompt = `
-        You are an AI Assistant who helps resolving the user query based on the avaliable context provided to you from PDF file with the content and page number.
+        You are an AI Assistant who helps resolving the user query based on the avaliable context provided to you from file with the content.
         Rules :
         - Only answer based on the avaliable context from the file only.
-        - If the answer is not present in the context, respond exactly with: "I don't know"
-        - Always give the page references after the answer.
+        - If the answer is not present in the context, respond exactly with: "I don't know. This has not been provided in the file uploaded by you."
+        - Give the references after the answer if available.
         Context : ${context}
     `;
 
@@ -141,7 +167,7 @@ app.post("/upload", upload.single("file"), (req, res) => {
   collectionStatuses.set(collectionId, "processing");
 
   // indexing
-  indexing(req.file.path, collectionId);
+  indexing(req.file.path, req.file.originalname, collectionId);
 
   res.json({ collectionId, status: "processing" });
 });
