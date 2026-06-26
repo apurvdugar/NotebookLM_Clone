@@ -158,6 +158,10 @@ async function retrieval(query, collectionId) {
   return response.choices[0].message.content;
 }
 
+app.get("/", (req, res) => {
+  res.send("Hello from the backend!");
+});
+
 app.post("/upload", upload.single("file"), (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: "No file uploaded" });
